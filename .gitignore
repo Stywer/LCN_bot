@@ -1,0 +1,6 @@
+﻿.env
+service_account.json
+lcn-bot-*.json
+aerobic-guide-*.json
+__pycache__/
+*.pyc
