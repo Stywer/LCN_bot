@@ -234,11 +234,6 @@ def build_reminder_embed(
         value=f"`{weekday_label(event_weekday)} {event_time}`",
         inline=False,
     )
-    embed.add_field(
-        name="Запись",
-        value="Открой `/sheet_unselected`, выбери строку и запишись через `/occupy`.",
-        inline=False,
-    )
     _upsert_attendance_fields(embed, going, not_going)
     embed.set_footer(text="LCN Bot")
     return embed
