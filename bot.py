@@ -53,6 +53,34 @@ def truncate_cell(value: str, max_len: int = 24) -> str:
     return normalized[: max_len - 3] + "..."
 
 
+def truncate_text(value: str, max_len: int) -> str:
+    text = value.strip()
+    if len(text) <= max_len:
+        return text
+    return text[: max_len - 3].rstrip() + "..."
+
+
+def format_reminder_description(value: str) -> str:
+    text = value.strip()
+    if not text:
+        return ""
+
+    # Buttons already handle choice, so remove legacy instruction text if present.
+    text = re.sub(
+        r"выберите:\s*✅\s*-\s*буду\s*❌\s*-\s*не\s*смогу",
+        "",
+        text,
+        flags=re.IGNORECASE,
+    )
+    text = re.sub(r"\s{2,}", " ", text).strip()
+
+    # Make very long one-line descriptions easier to read.
+    if "\n" not in text and len(text) > 220:
+        text = re.sub(r"\.\s+", ".\n", text)
+
+    return text.strip()
+
+
 def normalize_text(value: str) -> str:
     return " ".join(value.lower().replace("ё", "е").strip().split())
 
@@ -146,6 +174,21 @@ def weekday_label(index: int) -> str:
     return labels[index]
 
 
+def weekday_full_label(index: int) -> str:
+    labels = [
+        "понедельник",
+        "вторник",
+        "среда",
+        "четверг",
+        "пятница",
+        "суббота",
+        "воскресенье",
+    ]
+    if index < 0 or index >= len(labels):
+        return str(index)
+    return labels[index]
+
+
 def _format_vote_users(user_ids: list[int]) -> str:
     if not user_ids:
         return "—"
@@ -212,6 +255,7 @@ def _upsert_attendance_fields(embed: discord.Embed, going_ids: list[int], not_go
 def build_reminder_embed(
     title_text: str,
     description: str,
+    now_msk: datetime,
     event_weekday: int,
     event_time: str,
     going_ids: Optional[list[int]] = None,
@@ -219,19 +263,19 @@ def build_reminder_embed(
 ) -> discord.Embed:
     going = going_ids or []
     not_going = not_going_ids or []
+    safe_title = truncate_text(title_text, 256)
+    formatted_description = format_reminder_description(description)
+    safe_description = truncate_text(formatted_description, 4096)
     embed = discord.Embed(
-        title=title_text,
+        title=safe_title,
+        description=safe_description if safe_description else None,
         color=discord.Color.blurple(),
     )
-    if description:
-        embed.add_field(
-            name="Описание",
-            value=description,
-            inline=False,
-        )
+    event_at_msk = resolve_next_event_datetime(now_msk, event_weekday, event_time)
+    event_weekday_full = weekday_full_label(event_at_msk.weekday())
     embed.add_field(
         name="Начало события (МСК)",
-        value=f"`{weekday_label(event_weekday)} {event_time}`",
+        value=f"`{event_weekday_full}, {event_at_msk:%d.%m}, {event_time}`",
         inline=False,
     )
     _upsert_attendance_fields(embed, going, not_going)
@@ -1106,7 +1150,7 @@ async def reminder_worker() -> None:
             description = str(item.get("description", "")).strip()
             event_weekday = int(item.get("weekday", now_msk.weekday()))
             event_time = str(item.get("time", now_msk.strftime("%H:%M")))
-            embed = build_reminder_embed(title_text, description, event_weekday, event_time)
+            embed = build_reminder_embed(title_text, description, now_msk, event_weekday, event_time)
             view = ReminderVoteView()
             role_id = int(item.get("role_id", 0) or 0)
             ping_text = f"<@&{role_id}>" if role_id > 0 else None
