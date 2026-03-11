@@ -1,0 +1,35 @@
+{
+  "items": [
+    {
+      "id": 5,
+      "weekday": 2,
+      "time": "15:50",
+      "channel_id": 1475554514160451635,
+      "title": "Игра в субботу на AS VDV",
+      "description": "Играем в игру а у <@506070186944757782> голая мама",
+      "last_trigger_key": "2026-03-11 15:50"
+    },
+    {
+      "id": 6,
+      "weekday": 5,
+      "time": "16:30",
+      "remind_weekday": 2,
+      "remind_time": "15:57",
+      "channel_id": 1475554514160451635,
+      "title": "Игра в субботу на AS VDV",
+      "description": "дохуя текста",
+      "last_trigger_key": "2026-03-11 15:57"
+    },
+    {
+      "id": 7,
+      "weekday": 2,
+      "time": "16:33",
+      "remind_weekday": 2,
+      "remind_time": "16:02",
+      "channel_id": 1475554514160451635,
+      "title": "fafsa",
+      "description": "safasf",
+      "last_trigger_key": "2026-03-11 16:02"
+    }
+  ]
+}
