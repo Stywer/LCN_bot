@@ -76,6 +76,13 @@ def format_reminder_description(value: str) -> str:
     return text.strip()
 
 
+def split_title_mentions(title_text: str) -> tuple[str, list[str]]:
+    mentions = re.findall(r"<@!?\d+>|<@&\d+>", title_text)
+    clean_title = re.sub(r"<@!?\d+>|<@&\d+>", "", title_text)
+    clean_title = re.sub(r"\s{2,}", " ", clean_title).strip()
+    return clean_title or title_text.strip(), mentions
+
+
 def normalize_text(value: str) -> str:
     return " ".join(value.lower().replace("ё", "е").strip().split())
 
@@ -252,8 +259,12 @@ def build_reminder_embed(
 ) -> discord.Embed:
     going = going_ids or []
     not_going = not_going_ids or []
-    safe_title = truncate_text(title_text, 256)
+    clean_title, title_mentions = split_title_mentions(title_text)
+    safe_title = truncate_text(clean_title, 256)
     formatted_description = format_reminder_description(description)
+    if title_mentions:
+        mentions_text = ", ".join(dict.fromkeys(title_mentions))
+        formatted_description = f"{formatted_description}\n\nУчастники: {mentions_text}".strip()
     safe_description = truncate_text(formatted_description, 4096)
     embed = discord.Embed(
         title=safe_title,
@@ -312,6 +323,10 @@ class ReminderVoteStore:
         if key not in self._votes:
             self._votes[key] = {"yes": [], "no": []}
             self.save()
+
+    def reset_message(self, message_id: int) -> None:
+        self._votes[str(message_id)] = {"yes": [], "no": []}
+        self.save()
 
     def set_vote(self, message_id: int, user_id: int, vote: str) -> tuple[list[int], list[int]]:
         key = str(message_id)
@@ -844,7 +859,7 @@ async def reminder_worker() -> None:
                     view=view,
                     allowed_mentions=allowed_mentions,
                 )
-                reminder_votes.ensure_message(sent_message.id)
+                reminder_votes.reset_message(sent_message.id)
                 event_at_msk = resolve_next_event_datetime(now_msk, event_weekday, event_time)
                 await create_event_thread(sent_message, title_text, event_at_msk)
                 await send_signup_dm_to_role_members(
@@ -868,7 +883,7 @@ async def reminder_worker() -> None:
                         view=view,
                         allowed_mentions=allowed_mentions,
                     )
-                    reminder_votes.ensure_message(sent_message.id)
+                    reminder_votes.reset_message(sent_message.id)
                     event_at_msk = resolve_next_event_datetime(now_msk, event_weekday, event_time)
                     await create_event_thread(sent_message, title_text, event_at_msk)
                     await send_signup_dm_to_role_members(
@@ -1030,31 +1045,45 @@ async def add_reminder(
 
 @bot.tree.command(name="list_reminders", description="List configured reminders (Moscow time)")
 async def list_reminders(interaction: discord.Interaction) -> None:
-    await interaction.response.defer(thinking=True)
+    await interaction.response.defer(thinking=True, ephemeral=True)
 
     items = reminders.all()
     if not items:
-        await interaction.followup.send("No reminders configured.")
+        await interaction.followup.send("No reminders configured.", ephemeral=True)
         return
 
-    lines = ["## Reminders (MSK)"]
+    now_msk = datetime.now(MSK_TZ)
+    blocks = [f"## Reminders (MSK)\nВсего: `{len(items)}`"]
     for item in items:
         event_weekday = int(item.get("weekday", -1))
         event_time = str(item.get("time", ""))
-        publish_weekday = int(item.get("remind_weekday", event_weekday))
-        publish_time = str(item.get("remind_time", event_time))
-        lines.append(
-            f"id `{item.get('id')}` | event `{weekday_label(event_weekday)} {event_time}` | channel `{item.get('channel_id')}`"
-        )
-        lines.append(f"publish: {weekday_label(publish_weekday)} {publish_time}")
-        lines.append(f"mode: {'weekly' if bool(item.get('repeat', True)) else 'once'}")
-        role_id = int(item.get("role_id", 0) or 0)
-        lines.append(f"ping_role: {f'<@&{role_id}>' if role_id > 0 else '-'}")
         title_text = str(item.get("title", "")).strip() or str(item.get("message", "")).strip()
-        lines.append(f"title: {truncate_cell(title_text, 120)}")
-        lines.append(f"description: {truncate_cell(str(item.get('description', '')), 120) or '-'}")
+        try:
+            event_at_msk = resolve_next_event_datetime(now_msk, event_weekday, event_time)
+            event_date = f"{weekday_full_label(event_at_msk.weekday())}, {event_at_msk:%d.%m.%Y %H:%M}"
+        except Exception:
+            event_date = f"{weekday_label(event_weekday)} {event_time}"
+        blocks.append(
+            "\n".join(
+                [
+                    f"ID `{item.get('id')}`",
+                    f"Название: {truncate_text(title_text, 250) or '-'}",
+                    f"Дата: `{event_date}`",
+                ]
+            )
+        )
 
-    await send_interaction_text_chunks(interaction, "\n".join(lines))
+    current = ""
+    for block in blocks:
+        candidate = f"{current}\n\n{block}".strip()
+        if len(candidate) > MAX_DISCORD_MESSAGE_LEN and current:
+            await send_interaction_text_chunks(interaction, current)
+            current = block
+        else:
+            current = candidate
+
+    if current:
+        await send_interaction_text_chunks(interaction, current)
 
 
 @bot.tree.command(name="edit_reminder", description="Edit reminder by id")
