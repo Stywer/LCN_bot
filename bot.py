@@ -992,7 +992,7 @@ async def add_reminder(
     title: Optional[str] = None,
     description: Optional[str] = None,
 ) -> None:
-    await interaction.response.defer(thinking=True)
+    await interaction.response.defer(thinking=True, ephemeral=True)
 
     try:
         weekday_index = parse_weekday(weekday)
@@ -1019,12 +1019,13 @@ async def add_reminder(
             f"Event: `{weekday_label(weekday_index)} {event_hhmm}` (MSK)\n"
             f"Publish: `{weekday_label(publish_weekday_index)} {publish_hhmm}` (MSK), channel `{interaction.channel_id}`.\n"
             f"Mode: `{repeat_info}`"
-            f"{ping_info}"
+            f"{ping_info}",
+            ephemeral=True,
         )
     except ValueError as exc:
-        await interaction.followup.send(f"Failed to add reminder: {exc}")
+        await interaction.followup.send(f"Failed to add reminder: {exc}", ephemeral=True)
     except Exception as exc:  # noqa: BLE001
-        await interaction.followup.send(f"Failed to add reminder: {exc}")
+        await interaction.followup.send(f"Failed to add reminder: {exc}", ephemeral=True)
 
 
 @bot.tree.command(name="list_reminders", description="List configured reminders (Moscow time)")
